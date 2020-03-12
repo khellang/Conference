@@ -1,0 +1,55 @@
+trigger:
+- master
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  configuration: 'Release'
+  runtime: 'win-x64'
+
+jobs:
+  - job: build
+    displayName: "Build"
+    steps:
+      - task: DotNetCoreCLI@2
+        displayName: "Build"
+        inputs:
+          command: 'build'
+          projects: '**/*.sln'
+          arguments: '-r $(runtime) -c $(configuration)'
+
+      - task: DotNetCoreCLI@2
+        displayName: "Publish"
+        inputs:
+          command: 'publish'
+          arguments: '-r $(runtime) -c $(configuration) -o $(Build.ArtifactStagingDirectory) --no-build'
+          publishWebProjects: true
+          zipAfterPublish: true
+
+      - task: PublishPipelineArtifact@1
+        displayName: "Upload Artifacts"
+        inputs:
+          path: '$(Build.ArtifactStagingDirectory)'
+          artifact: api
+
+  - deployment: deploy
+    displayName: "Deploy"
+    environment: api-dev
+    dependsOn: build
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - task: DownloadPipelineArtifact@2
+              inputs:
+                artifact: api
+
+            - task: AzureWebApp@1
+              inputs:
+                package: '$(Pipeline.Workspace)/Conference.zip'
+                azureSubscription: 'conference'
+                appName: 'conference-planner'
+                deploymentMethod: 'auto'
+                appType: 'webApp'
+                
